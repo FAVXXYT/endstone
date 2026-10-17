@@ -225,8 +225,8 @@ jobs:
         uses: docker/login-action@v4
         with:
           registry: ${{ matrix.registry }}
-          username: ${{ matrix.username == 'github_actor' && github.actor || secrets[matrix.username] }}
-          password: ${{ secrets[matrix.password] }}
+          username: ${{ matrix.name == 'GHCR' && github.actor || secrets.DOCKERHUB_USERNAME }}
+          password: ${{ matrix.name == 'GHCR' && github.token || secrets.DOCKERHUB_TOKEN }}
 
       - name: Extract Metadata
         id: meta
