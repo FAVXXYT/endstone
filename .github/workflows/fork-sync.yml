@@ -1,14 +1,65 @@
 name: Sync upstream Endstone
+
+# Keeps this repository up to date with EndstoneMC/endstone.
+#
+# This repo is NOT a GitHub fork any more (a private fork of a public repo is
+# not permitted by GitHub), so `gh repo sync` no longer works. Instead we pull
+# the public upstream directly with plain git and merge it into `main`.
+#
+# Upstream is public, so fetching needs no credentials.
+# Pushing uses the built-in GITHUB_TOKEN (see `permissions` below).
+
 on:
   schedule:
+    # 03:00 UTC daily
     - cron: "0 3 * * *"
   workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Never let two syncs overlap.
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Sync fork with upstream
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history is required for the ancestor check and the merge.
+          fetch-depth: 0
+
+      - name: Merge upstream/main
         run: |
-          gh repo sync FAVXXYT/endstone --source EndstoneMC/endstone --branch main
+          set -euo pipefail
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream https://github.com/EndstoneMC/endstone.git
+          git fetch --no-tags upstream main
+
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Already up to date with upstream/main. Nothing to do."
+            exit 0
+          fi
+
+          echo "Upstream has new commits, merging into main..."
+          if ! git merge --no-edit upstream/main; then
+            git merge --abort || true
+            echo "::error::Merge conflict with upstream/main. Resolve this locally, then re-run the workflow."
+            exit 1
+          fi
+
+          git push origin HEAD:main
+
+      - name: Sync upstream tags
+        # Tag drift should never break the code sync, so failures are tolerated.
+        continue-on-error: true
+        run: |
+          git fetch --tags upstream
+          git push origin --tags
